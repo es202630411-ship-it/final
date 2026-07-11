@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>우주 연대기 3D 시뮬레이터</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+body { margin: 0; background-color: #050505; color: white; font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif; overflow-x: hidden; }
+.wrapper { width: 100%; max-width: 1050px; margin: 0 auto; padding: 15px; box-sizing: border-box; }
+
+/* 1. 우주 연대기 표 스타일 */
+.timeline-table { width: 100%; border-collapse: collapse; text-align: center; margin-bottom: 20px; background-color: #111; border: 2px solid #333; border-radius: 8px; overflow: hidden; font-size: 13px; }
+.timeline-table th { background-color: #222; color: #00d2ff; padding: 10px; border: 1px solid #333; }
+.timeline-table td { padding: 8px; border: 1px solid #222; color: #ddd; }
+.active-row { background-color: #1a2936 !important; border: 1px solid #00d2ff !important; font-weight: bold; }
+
+/* 2. 시각화 레이아웃 (가로 2분할 배치) */
+.visual-layout { display: flex; gap: 15px; width: 100%; height: 450px; }
+
+/* [왼쪽] 3D 스크린 공간 */
+#canvas-container { flex: 1.2; height: 100%; background-color: black; border-radius: 10px; border: 1px solid #444; position: relative; overflow: hidden; }
+
+/* [오른쪽] 2D 그래프 디자인 공간 */
+#graph-container { flex: 0.8; height: 100%; background-color: #111; border-radius: 10px; border: 1px solid #444; padding: 15px; box-sizing: border-box; display: flex; flex-direction: column; }
+.graph-title { text-align: center; margin: 0 0 10px 0; color: #ffff33; font-size: 13px; font-weight: bold; }
+#physics-canvas { width: 100%; flex: 1; background-color: #050505; border-radius: 6px; }
+
+/* 3. 정보 오버레이 디스플레이 */
+#info-overlay { position: absolute; top: 15px; left: 15px; right: 15px; pointer-events: none; background: rgba(0,0,0,0.65); padding: 12px; border-radius: 6px; border-left: 4px solid #00d2ff; }
+#info-title { margin: 0 0 5px 0; color: #00d2ff; font-size: 16px; font-weight: bold; }
+#info-desc { margin: 0; color: #eee; font-size: 13px; line-height: 1.4; }
+
+/* 4. 스크롤 제어 슬라이더 공간 */
+.control-panel { background-color: #111; padding: 15px; margin-top: 15px; border-radius: 8px; border: 1px solid #333; box-sizing: border-box; }
+.slider-title { text-align: center; margin-top: 0; margin-bottom: 10px; color: #aaa; font-size: 12px; }
+.slider-wrapper { display: flex; align-items: center; justify-content: center; width: 100%; }
+.main-slider { -webkit-appearance: none; width: 85%; height: 10px; border-radius: 5px; background: #333; outline: none; cursor: pointer; transition: background .15s ease-in-out; }
+.main-slider::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 22px; height: 22px; border-radius: 50%; background: #00d2ff; cursor: pointer; box-shadow: 0 0 8px #00d2ff; }
+.step-label { width: 15%; text-align: center; font-weight: bold; color: #00d2ff; font-size: 15px; }
+</style>
+</head>
+<body>
+
+<div class="wrapper">
+<table class="timeline-table" id="timelineTable">
+<thead>
+<tr>
+<th>단계</th>
+<th>시기 및 온도</th>
+<th>디테일 과학 핵심 내용 (중3 과학 연계)</th>
+</tr>
+</thead>
+<tbody>
+<tr id="row-1">
+<td style="color:#ff4d4d;">1단계</td>
+<td>빅뱅 직후 초고온</td>
+<td>물질의 근본인 <b>기본 입자(쿼크, 전자)</b>가 무작위로 폭발하듯 흩어짐</td>
+</tr>
+<tr id="row-2">
+<td style="color:#ff9933;">2단계</td>
+<td>입자 합성기</td>
+<td>우주 냉각 시작. <b>쿼크 3개가 결합</b>하여 양성자와 중성자를 합성함</td>
+</tr>
+<tr id="row-3">
+<td style="color:#ffff33;">3단계</td>
+<td>빅뱅 후 3분 (10억K)</td>
+<td>양성자·중성자 결합. <b>수소 원자핵과 헬륨 원자핵이 질량비 3:1</b>로 결합</td>
+</tr>
+<tr id="row-4">
+<td style="color:#33cc33;">4단계</td>
+<td>빅뱅 후 38만년 (3000K)</td>
+<td>전자가 원자핵에 포획되어 <b>안정된 원자</b> 형성. 우주가 투명해지며 <b>우주 배경 복사</b> 방출</td>
+</tr>
+<tr id="row-5">
+<td style="color:#cc33ff;">5단계</td>
+<td>초기 원시 우주</td>
+<td>수소·헬륨 가스 구름이 중력에 의해 회전 수축하며 <b>초기 은하의 씨앗</b>을 형성</td>
+</tr>
+<tr id="row-6">
+<td style="color:#3399ff;">6단계</td>
+<td>현재 (약 138억년)</td>
+<td>고도로 진화한 거대 나선 은하 완성. 그 변두리 영역에 푸른 행성 <b>지구</b>가 위치함</td>
+</tr>
+</tbody>
+</table>
+
+<div class="visual-layout">
+    <div id="canvas-container">
+        <div id="info-overlay">
+            <div id="info-title">로딩 중...</div>
+            <div id="info-desc">시뮬레이션을 준비하고 있습니다.</div>
+        </div>
+    </div>
+
+    <div id="graph-container">
+        <div class="graph-title">📉 우주 연대기 물리량 변화 지표 그래프</div>
+        <canvas id="physics-canvas"></canvas>
+    </div>
+</div>
+
+<div class="control-panel">
+<div class="slider-title">▼ 마우스로 스크롤(슬라이더)을 좌우로 움직여 우주의 시공간을 탐험하세요 (화면 드래그로 회전 가능)</div>
+<div class="slider-wrapper">
+<input type="range" min="1" max="6" value="1" class="main-slider" id="timelineSlider">
+<div class="step-label" id="stepLabel">1 단계</div>
+</div>
+</div>
+</div>
+
+<script>
+// --- 데이터 정의 ---
+const stages = [
+{ title: "1단계: 기본 입자의 바다 (초고온)", desc: "물질을 구성하는 가장 기본 단위인 쿼크(빨강/파랑)와 전자(노랑 광구)들이 결합 에너지보다 열에너지가 너무 강해 서로 결합하지 못하고 난폭하게 요동치는 디테일 상태입니다." },
+{ title: "2단계: 기본 입자의 합성 (양성자/중성자)", desc: "우주의 팽창으로 온도가 하강하자 강한 핵력이 작용합니다. 디테일하게 보시면 쿼크 3개가 조밀하게 결합 연동하여 양성자(Up,Up,Down 쿼크 결합체)와 중성자(Up,Down,Down 결합체)의 구조 덩어리를 이뤄냅니다." },
+{ title: "3단계: 원자핵의 결합 형성 (빅뱅 후 3분)", desc: "우주 온도가 10억K에 도달하며 대전환이 일어납니다. 양성자 1개 자체인 수소 원자핵 무리와 양성자 2개+중성자 2개가 정밀하게 뭉친 무거운 헬륨 원자핵 덩어리가 생성됩니다. 개수비는 12:1이지만 질량비는 정확히 3:1을 맞춥니다." },
+{ title: "4단계: 중성 원자의 탄생 (빅뱅 후 38만 년, 3000K)", desc: "결정적 사건의 날입니다. 온도가 3000K까지 식으면서 맹렬히 날아다니던 전자(노랑 알갱이)들이 비로소 원자핵의 전자기력 궤도에 구속됩니다. 빛을 막던 전자 장막이 걷히며 우주가 무색투명해지고 직진한 빛이 '우주 배경 복사'가 됩니다." },
+{ title: "5단계: 중력의 지배와 초기 은하의 태동", desc: "고르게 퍼져있던 수소와 헬륨 기체들이 미세한 밀도 차이에 의한 중력 붕괴를 일으킵니다. 수많은 가스 소용돌이 입자들이 질량을 채우며 거대한 우주 구조인 원시 은하 성단을 구성하기 시작합니다." },
+{ title: "6단계: 완숙한 나선 은하 시스템과 우리 지구", desc: "138억 년의 진화 끝에 은하 중심핵을 기준으로 아름다운 항성 팔이 뻗어나가는 나선 은하계가 자리를 잡았습니다. 은하 중심에서 약 3만 광년 떨어진 태양계 변두리에 인류와 생명의 요람인 푸른 행성 '지구'가 정밀하게 자전하며 빛나고 있습니다." }
+];
+
+// 그래프용 고정 데이터 지표
+const graphMetrics = [
+    { temp: 95, size: 5, label: "빅뱅직후" },
+    { temp: 75, size: 20, label: "1초미만" },
+    { temp: 55, size: 40, label: "3분" },
+    { temp: 35, size: 60, label: "38만년" },
+    { temp: 18, size: 80, label: "수억년" },
+    { temp: 3, size: 95, label: "현재" }
+];
+
+// --- 2D Canvas 그래프 렌더링 엔진 ---
+const canvas = document.getElementById('physics-canvas');
+const ctx = canvas.getContext('2d');
+
+function render2DGraph(currentStep) {
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width; const h = rect.height;
+    const paddingLeft = 40; const paddingRight = 40; const paddingTop = 20; const paddingBottom = 30;
+    
+    ctx.fillStyle = "#050505"; ctx.fillRect(0, 0, w, h);
+
+    // 가이드 그리드 점선선
+    ctx.strokeStyle = "#1a1a1a"; ctx.lineWidth = 1;
+    for(let i=1; i<=4; i++) {
+        let y = paddingTop + (i/5)*(h - paddingTop - paddingBottom);
+        ctx.beginPath(); ctx.moveTo(paddingLeft, y); ctx.lineTo(w - paddingRight, y); ctx.stroke();
+    }
+
+    // 메인 테두리 축
+    ctx.strokeStyle = "#444";
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, paddingTop); ctx.lineTo(paddingLeft, h - paddingBottom);
+    ctx.lineTo(w - paddingRight, h - paddingBottom); ctx.moveTo(w - paddingRight, paddingTop);
+    ctx.lineTo(w - paddingRight, h - paddingBottom); ctx.stroke();
+
+    // 상단 범례 매핑핑
+    ctx.font = "10px sans-serif";
+    ctx.fillStyle = "#ff4d4d"; ctx.fillText("🌡️ 우주 온도", 10, 12);
+    ctx.fillStyle = "#3399ff"; ctx.fillText("📐 우주 크기", w - 65, 12);
+
+    const plotW = w - paddingLeft - paddingRight;
+    const plotH = h - paddingTop - paddingBottom;
+
+    const points = graphMetrics.map((m, idx) => {
+        const x = paddingLeft + (idx / 5) * plotW;
+        const yTemp = (h - paddingBottom) - (m.temp / 100) * plotH;
+        const ySize = (h - paddingBottom) - (m.size / 100) * plotH;
+
+        ctx.fillStyle = (idx === currentStep - 1) ? "#00d2ff" : "#555";
+        ctx.font = (idx === currentStep - 1) ? "bold 10px sans-serif" : "9px sans-serif";
+        ctx.fillText(m.label, x - 15, h - paddingBottom + 15);
+
+        return { x, yTemp, ySize };
+    });
+
+    // 온도 감소선 곡선화화
+    ctx.strokeStyle = "rgba(255, 77, 77, 0.6)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(points[0].x, points[0].yTemp);
+    for(let i=1; i<points.length; i++) ctx.lineTo(points[i].x, points[i].yTemp);
+    ctx.stroke();
+
+    // 우주 크기 증가 곡선화
+    ctx.strokeStyle = "rgba(51, 153, 255, 0.6)"; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(points[0].x, points[0].ySize);
+    for(let i=1; i<points.length; i++) ctx.lineTo(points[i].x, points[i].ySize);
+    ctx.stroke();
+
+    // 현재 제어 스텝 인디케이터 점선
+    const currentPt = points[currentStep - 1];
+    ctx.strokeStyle = "rgba(0, 210, 255, 0.3)"; ctx.setLineDash([3, 3]);
+    ctx.beginPath(); ctx.moveTo(currentPt.x, paddingTop); ctx.lineTo(currentPt.x, h - paddingBottom); ctx.stroke();
+    ctx.setLineDash([]);
+
+    // 현재 단계 중요 포인트 원형 강조 마커 배치치
+    ctx.fillStyle = "#ff4d4d"; ctx.beginPath(); ctx.arc(currentPt.x, currentPt.yTemp, 4.5, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = "#3399ff"; ctx.beginPath(); ctx.arc(currentPt.x, currentPt.ySize, 4.5, 0, Math.PI * 2); ctx.fill();
+}
+
+// --- Three.js 3D 환경 구성 ---
+const container = document.getElementById('canvas-container');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x000000);
+const camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+camera.position.set(0, 5, 10);
+camera.lookAt(0, 0, 0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(container.clientWidth, container.clientHeight);
+container.appendChild(renderer.domElement);
+
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambientLight);
+const pointLight = new THREE.PointLight(0xffffff, 0.8, 100);
+pointLight.position.set(5, 10, 5);
+scene.add(pointLight);
+
+let currentGroup = new THREE.Group();
+scene.add(currentGroup);
+
+// --- 단계별 3D 물리 공간 객체 생성기 ---
+function build3DScene(step) {
+while(currentGroup.children.length > 0){
+const obj = currentGroup.children[0];
+currentGroup.remove(obj);
+}
+
+const matRed = new THREE.MeshPhongMaterial({ color: 0xff4d4d, emissive: 0x220000 });
+const matBlue = new THREE.MeshPhongMaterial({ color: 0x3399ff, emissive: 0x001133 });
+const matYellow = new THREE.MeshPhongMaterial({ color: 0xffff33, emissive: 0x333300 });
+const matOrange = new THREE.MeshPhongMaterial({ color: 0xff9933 });
+const matGreen = new THREE.MeshPhongMaterial({ color: 0x33cc33 });
+const geoParticle = new THREE.SphereGeometry(0.18, 16, 16);
+
+if (step === 1) {
+for(let i=0; i<60; i++) {
+const mesh = new THREE.Mesh(geoParticle, i%3==0 ? matRed : (i%3==1 ? matBlue : matYellow));
+mesh.position.set((Math.random()-0.5)*8, (Math.random()-0.5)*5, (Math.random()-0.5)*8);
+currentGroup.add(mesh);
+}
+}
+else if (step === 2) {
+const pGroup = new THREE.Group();
+const q1 = new THREE.Mesh(geoParticle, matRed); q1.position.set(0, 0.2, 0);
+const q2 = new THREE.Mesh(geoParticle, matRed); q2.position.set(-0.2, -0.1, 0);
+const q3 = new THREE.Mesh(geoParticle, matBlue); q3.position.set(0.2, -0.1, 0);
+pGroup.add(q1, q2, q3); pGroup.position.set(-2, 0, 0); pGroup.scale.set(2,2,2);
+currentGroup.add(pGroup);
+
+const nGroup = new THREE.Group();
+const q4 = new THREE.Mesh(geoParticle, matBlue); q4.position.set(0, 0.2, 0);
+const q5 = new THREE.Mesh(geoParticle, matBlue); q5.position.set(-0.2, -0.1, 0);
+const q6 = new THREE.Mesh(geoParticle, matRed); q6.position.set(0.2, -0.1, 0);
+nGroup.add(q4, q5, q6); nGroup.position.set(2, 0, 0); nGroup.scale.set(2,2,2);
+currentGroup.add(nGroup);
+}
+else if (step === 3) {
+const hNucleus = new THREE.Mesh(new THREE.SphereGeometry(0.5, 32, 32), matOrange);
+hNucleus.position.set(-3, 0, 0);
+currentGroup.add(hNucleus);
+
+const heNucleus = new THREE.Group();
+const p1 = new THREE.Mesh(new THREE.SphereGeometry(0.4,24,24), matOrange); p1.position.set(-0.3, 0.3, 0);
+const p2 = new THREE.Mesh(new THREE.SphereGeometry(0.4,24,24), matOrange); p2.position.set(0.3, -0.3, 0);
+const n1 = new THREE.Mesh(new THREE.SphereGeometry(0.4,24,24), matGreen); n1.position.set(0.3, 0.3, 0);
+const n2 = new THREE.Mesh(new THREE.SphereGeometry(0.4,24,24), matGreen); n2.position.set(-0.3, -0.3, 0);
+heNucleus.add(p1, p2, n1, n2); heNucleus.position.set(2, 0, 0);
+currentGroup.add(heNucleus);
+}
+else if (step === 4) {
+const atomGroup = new THREE.Group();
+const hN = new THREE.Mesh(new THREE.SphereGeometry(0.4,24,24), matOrange); hN.position.set(-2.5, 0, 0);
+const hE = new THREE.Mesh(new THREE.SphereGeometry(0.1,16,16), matYellow); hE.idName = "electronH";
+atomGroup.add(hN, hE);
+const heN = new THREE.Mesh(new THREE.SphereGeometry(0.6,24,24), matGreen); heN.position.set(2.5, 0, 0);
+const heE1 = new THREE.Mesh(new THREE.SphereGeometry(0.1,16,16), matYellow); heE1.idName = "electronHe1";
+const heE2 = new THREE.Mesh(new THREE.SphereGeometry(0.1,16,16), matYellow); heE2.idName = "electronHe2";
+atomGroup.add(heN, heE1, heE2);
+currentGroup.add(atomGroup);
+}
+else if (step === 5) {
+const pCount = 400;
+const geom = new THREE.BufferGeometry();
+const positions = [];
+for(let i=0; i<pCount; i++) {
+const r = Math.abs(normalRandom(0, 2.5));
+const theta = Math.random() * Math.PI * 2;
+positions.push(r*Math.cos(theta), (Math.random()-0.5)*1.5, r*Math.sin(theta));
+}
+geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+const pMat = new THREE.PointsMaterial({ size: 0.08, color: 0xcc33ff });
+const pSystem = new THREE.Points(geom, pMat);
+currentGroup.add(pSystem);
+}
+else if (step === 6) {
+const pCount = 600;
+const geom = new THREE.BufferGeometry();
+const positions = [];
+for(let i=0; i<pCount; i++) {
+const t = (i / pCount) * 12;
+const r = t * 0.35;
+const angle = t + (i % 2 === 0 ? 0 : Math.PI);
+positions.push(r*Math.cos(angle) + (Math.random()-0.5)*0.3, (Math.random()-0.5)*0.1, r*Math.sin(angle)+ (Math.random()-0.5)*0.3);
+}
+geom.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+const pMat = new THREE.PointsMaterial({ size: 0.05, color: 0x88ccff });
+const pSystem = new THREE.Points(geom, pMat);
+currentGroup.add(pSystem);
+
+const earthGeo = new THREE.SphereGeometry(0.7, 32, 32);
+const earthMat = new THREE.MeshPhongMaterial({ color: 0x00a2ff, emissive: 0x002244, shininess: 30 });
+const earthMesh = new THREE.Mesh(earthGeo, earthMat);
+earthMesh.position.set(3.5, 2, 0);
+earthMesh.idName = "earthObj";
+currentGroup.add(earthMesh);
+}
+}
+
+function normalRandom(mean, stddev) {
+let u = 0, v = 0;
+while(u === 0) u = Math.random();
+while(v === 0) v = Math.random();
+return mean + stddev * Math.sqrt(-2.0 * Math.log(u)) * Math.cos(2.0 * Math.PI * v);
+}
+
+// --- UI 핸들러 및 슬라이더 연동기 ---
+const slider = document.getElementById('timelineSlider');
+const stepLabel = document.getElementById('stepLabel');
+const infoTitle = document.getElementById('info-title');
+const infoDesc = document.getElementById('info-desc');
+
+function updateUI(stepIdx) {
+const info = stages[stepIdx - 1];
+infoTitle.innerText = info.title;
+infoDesc.innerText = info.desc;
+stepLabel.innerText = stepIdx + " 단계";
+
+for(let i=1; i<=6; i++) {
+document.getElementById('row-'+i).className = (i === stepIdx) ? 'active-row' : '';
+}
+build3DScene(stepIdx);
+render2DGraph(stepIdx);
+}
+
+slider.addEventListener('input', (e) => {
+updateUI(parseInt(e.target.value));
+});
+
+// 마우스 회전 드래그 제어 인터랙션 설정
+let isDragging = false; let previousMousePosition = { x: 0, y: 0 };
+container.addEventListener('mousedown', (e) => { isDragging = true; });
+container.addEventListener('mousemove', (e) => {
+const deltaMove = { x: e.offsetX - previousMousePosition.x, y: e.offsetY - previousMousePosition.y };
+if(isDragging) {
+currentGroup.rotation.y += deltaMove.x * 0.007;
+currentGroup.rotation.x += deltaMove.y * 0.007;
+}
+previousMousePosition = { x: e.offsetX, y: e.offsetY };
+});
+window.addEventListener('mouseup', () => { isDragging = false; });
+
+// --- 프레임 렌더링 애니메이션 루프 ---
+let clock = new THREE.Clock();
+function animateLoop() {
+requestAnimationFrame(animateLoop);
+const time = clock.getElapsedTime();
+const currentStep = parseInt(slider.value);
+
+if (currentStep !== 2 && currentStep !== 3 && currentStep !== 4) {
+currentGroup.rotation.y += 0.003;
+}
+
+if(currentStep === 4) {
+currentGroup.children.forEach(child => {
+if(child.children) {
+child.children.forEach(mesh => {
+if(mesh.idName === "electronH") {
+mesh.position.set(-2.5 + Math.cos(time*3.5)*0.8, Math.sin(time*3.5)*0.8, 0);
+}
+if(mesh.idName === "electronHe1") {
+mesh.position.set(2.5 + Math.cos(time*4)*1.3, 0, Math.sin(time*4)*1.3);
+}
+if(mesh.idName === "electronHe2") {
+mesh.position.set(2.5, Math.sin(time*2.5)*1.3, Math.cos(time*2.5)*1.3);
+}
+});
+}
+});
+}
+
+if(currentStep === 6) {
+currentGroup.children.forEach(mesh => {
+if(mesh.idName === "earthObj") {
+mesh.rotation.y += 0.015;
+}
+});
+}
+
+renderer.render(scene, camera);
+}
+
+// 초기화 호출출
+updateUI(1);
+animateLoop();
+
+// 뷰포트 크기 변화 조정정
+window.addEventListener('resize', () => {
+camera.aspect = container.clientWidth / container.clientHeight;
+camera.updateProjectionMatrix();
+renderer.setSize(container.clientWidth, container.clientHeight);
+render2DGraph(parseInt(slider.value));
+});
+</script>
+</body>
+</html>
